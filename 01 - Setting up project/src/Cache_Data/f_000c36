@@ -1,0 +1,559 @@
+
+var urlParam = function (key, root) {
+  var querystring = root? window.parent.location.search : window.location.search;
+  var pairs = querystring.substring(1).split("&");
+
+  for (var i in pairs) {
+    var parts = decodeURIComponent(pairs[i]).split("=");
+    if (parts[0] == key && parts[1]) {
+      return parts[1];
+    }
+  }
+  return "";
+};
+
+var getBucketProperty = function (bucket, property)  {
+  if (window.BucketConfig.bucketOptions[bucket] && window.BucketConfig.bucketOptions[bucket].properties &&
+    typeof window.BucketConfig.bucketOptions[bucket].properties[property] !== 'undefined') {
+    return window.BucketConfig.bucketOptions[bucket].properties[property];
+  }
+  else {
+    var defaultBucket;
+    // if we're in ads.html regression test use the adzerk-default buckets
+    if (urlParam("testid", false)) {
+      defaultBucket = (bucket.match('-lb')) ? "adzerk-default-lb" : "adzerk-default";
+    } else {
+      defaultBucket = (bucket.match('-lb')) ? "default-lb" : "default";
+    }
+    if (typeof window.BucketConfig.bucketOptions[defaultBucket].properties[property] !== 'undefined') {
+      return window.BucketConfig.bucketOptions[defaultBucket].properties[property];
+    } else {
+      return false;
+    }
+  }
+};
+
+var getCurrentBucketName = function () {
+  var bucket = urlParam('bucket', false);
+  var adt = urlParam('adt', false);
+  var page = urlParam('page', false);
+  // for leaderboard ads remove the '+name' postfix
+  // insert '-lb' after the first word in the name to indicate that it's a leaderboard placement
+  // so 'bucket=classic-us+display&adt=4' becomes 'classic-lb-us'
+  if (adt === "4") {
+    // Remove any trailing +<postfix>, use the base leaderboard bucket for those
+    bucket = removePlusPostfix(bucket);
+    bucket = insertDashLB(bucket);
+    return bucket;
+  }
+  // for the mrec on trending page, remove the '+name' postfix (if any) and replace with '+trending'.
+  // the mrec may have adt=5 or adt=380.
+  else if (adt === "5" && page === "trending" || adt === "380" && page === "trending") {
+    bucket = removePlusPostfix(bucket);
+    return bucket.concat("+trending");
+  }
+  // for the right pane player on trending page, remove the '+name' postfix (if any) and replace with '+contentplayer'.
+  else if (adt === "6" && page === "trending") {
+    bucket = removePlusPostfix(bucket);
+    return bucket.concat("+contentplayer");
+  }
+  // for the right pane LB on trending page, remove the '+name' postfix (if any) and replace with '+contentplayer'.
+  // and do -lb insertion.
+  else if (adt === "7" && page === "trending") {
+    bucket = removePlusPostfix(bucket);
+    bucket = bucket.concat("+contentplayer");
+    bucket = insertDashLB(bucket);
+    return bucket;
+  }
+  else {
+    return bucket;
+  }
+};
+
+var insertDashLB = function (bucketName) {
+  var index = bucketName.indexOf("-");
+  if (index > 0) {
+    return bucketName.slice(0, index) + "-lb" + bucketName.slice(index);
+  }
+  else {
+    return bucketName + "-lb";
+  }
+};
+
+var removePlusPostfix = function (bucketName) {
+  if (bucketName.indexOf("+") !== -1) {
+    return bucketName.slice(0, bucketName.indexOf("+"));
+  } else {
+    return bucketName;
+  }
+};
+
+var getBucketNameWithIVT = function () {
+  var bucket = getCurrentBucketName(urlParam("bucket"), urlParam("adt"));
+  if (getIVTBucket()) {
+    return bucket + "-" + getIVTBucket();
+  } else {
+    return bucket;
+  }
+};
+
+var loadBuckets = function () {
+  return new Promise( function(resolve, reject) {
+    var bucket = getCurrentBucketName();
+    var defaultBucket = (bucket.match('-lb')) ? "default-lb" : "default";
+    var bucketsLoaded = {};
+    bucketsLoaded[defaultBucket] = YAML.load(getBucketURL(defaultBucket));
+    bucketsLoaded[bucket] = YAML.load(getBucketURL(bucket));
+    resolve({ bucketOptions: bucketsLoaded });
+    if (!bucketsLoaded[bucket]) {
+      console.error("Bucket not loaded. The bucket param is either invalid or missing. Attempted to load: bucket=" + bucket);
+    }
+  });
+};
+
+var getBucketURL = function (bucketName) {
+  //Use dynamic domain names only if on production. If on test, staging, localhost, etc... use a hardcoded domain.
+  //TODO: switch hardcoded trontv.com to rainberrytv.com when that becomes dominant.
+  if (location.hostname === "video.rainberrytv.com" || location.hostname === "video.trontv.com") {
+    return "https://" + location.host + "/assets/js/" + bucketName + ".yaml";
+  } else {
+    return "https://video.trontv.com/assets/js/"+ bucketName + ".yaml";
+  }
+};
+
+var getDisplayConfigURL = function () {
+  //Use dynamic domain names only if on production. If on test, staging, localhost, etc... use a hardcoded domain.
+  //TODO: switch hardcoded trontv.com to rainberrytv.com when that becomes dominant.
+  if (location.hostname === "video.rainberrytv.com" || location.hostname === "video.trontv.com") {
+    return "https://"+ location.hostname +"/assets/js/display-config.json";
+  } else {
+    return "https://video.trontv.com/assets/js/display-config.json";
+  }
+};
+
+var getVideoConfigURL = function () {
+  //Use dynamic domain names only if on production. If on test, staging, localhost, etc... use a hardcoded domain.
+  //TODO: switch hardcoded trontv.com to rainberrytv.com when that becomes dominant.
+  if (location.hostname === "video.rainberrytv.com" || location.hostname === "video.trontv.com") {
+    return "https://"+ location.hostname +"/assets/js/video-config.json";
+  } else {
+    return "https://video.trontv.com/assets/js/video-config.json";
+  }
+};
+
+var reload = function () {
+  // try {
+  //   window.external.adRefreshNow();
+  // }
+  // catch(e) {
+  //   // If reloading via the client failed then reload in the browser.
+  //   // This is for browser clients or in browser testing.
+  //   // The next line is needed for the reload to work with chrome:
+  //   //  https://stackoverflow.com/questions/17296585/refresh-iframe-from-inside-itself-with-different-domains
+
+  // TODO: use the browser's visibility api to test if mimized
+    document.location.href = document.location.href;
+    window.location.reload();
+  // }
+};
+
+
+var callReload = function () {
+  reloadIfInFocus(reload);
+};
+
+//accepts a redirect or reload function as an argument
+var reloadIfInFocus = function (reloadCallback) {
+  // This case is for both web and the classic client.
+  // In IE webview getFocus does not currently work on the trending node therefore we simply will call the reload callback.
+  // If getFocus becomes available on the trending node this branch will be removed.
+  if (inContentDetailTrendingPage()) {
+    reloadCallback();
+  }
+  else if (inClassicClient()) {
+    // We do not check getFocus in WV2 because that is handled by the client.
+    if (inWebView2()) {
+      reloadCallback();
+    }
+    // In IE webview check the getFocus status before reloading.
+    else if (inIEWebView()){
+      try {
+        // Call getFocus and reload if in focus.
+        if (window.external.getFocus === true) {
+          reloadCallback();
+        }
+        // if out of focus then set a timer for one second and call reloadIfInfocus again,
+        // So that when the client is back in focus we reload.
+        else {
+          setTimeout (function () {reloadIfInFocus()}, 1000);
+        }
+      } catch(e) {
+        // This case should never happen
+        console.log(e);
+        reloadCallback();
+      }
+    }
+  }
+  //This case is if in the browser or in UTWeb.
+  else {
+    reloadCallback();
+  }
+};
+
+var redirectToPath = function (path) {
+  sendEvent('ads_video_reload');
+  // If reloading via the client failed then reload in the browser.
+  // This is for browser clients or in browser testing.
+  // The next line is needed for the reload to work with chrome:
+  //  https://stackoverflow.com/questions/17296585/refresh-iframe-from-inside-itself-with-different-domains
+  document.location.href = document.location.href;
+  window.location.replace(window.location.origin + path + window.location.search);
+};
+
+var redirectToClassicWrapper = function (urlPath) {
+  redirectToPath("/network/utclassic-content.html");
+};
+
+var redirectToContentDetailTrending = function (urlPath) {
+  redirectToPath("/smart/video/content-detail-trending.html");
+};
+
+var redirectToTrendingPage = function (urlPath) {
+  let hostNameWords = window.location.hostname.split(".")
+  let page = ""
+  if (hostNameWords.length < 2) {
+    page = "rainberrytv"
+  }
+  else {
+    page = hostNameWords[1]
+  }
+  redirectToPath("/smart/video/ima/" + page + ".html");
+};
+
+var redirectToTronTV = function (urlPath) {
+  redirectToPath("/smart/video/ima/trontv.html");
+};
+
+var redirectToSelf = function (urlPath) {
+  redirectToPath(window.location.pathname)
+};
+
+// core-js-bundle needs to be added to the corresponding html file in order for Object.keys and Object.values to work in IE
+//<script src="https://unpkg.com/core-js-bundle@3.14.0/minified.js"></script>
+var getIVTBucket = function () {
+  // Calculate the user's rollout value between 0 - 100
+  var uid = urlParam("uid");
+  var hash = sha256(uid);
+  var firstByte = hash.slice(0, 2);
+  var rollout = parseInt(firstByte, 16) * (100 / 256);
+
+  // Get the ivtRollout from the config and return null if there isn't one.
+  var ivtRollout = getBucketProperty(getCurrentBucketName(), "ivtRollout");
+  if (!ivtRollout) return null;
+  //take the values from the ivtRollout object and find which value is the closest higher value.
+  var ivtArray = Object.values(ivtRollout);
+  ivtArray.sort(function (a, b) {
+    return a - b;
+  });
+  var ivtRolloutVal = closest(ivtArray, rollout);
+  var ivtBucket = Object.keys(ivtRollout).find(function (key) {
+    return ivtRollout[key] === ivtRolloutVal
+  }) || null;
+  return ivtBucket;
+};
+
+// Returns the number in the IVT rollout array that is the closest number above the user rollout number
+var closest = function (ivtValuesFromConfigArray, userRolloutValue) {
+  var max = Math.max.apply(null, ivtValuesFromConfigArray);
+  if (userRolloutValue > max) {
+    return null;
+  } else {
+    var closestHigherNum = max;
+    for (var i = 0; i < ivtValuesFromConfigArray.length; i++) {
+      if (ivtValuesFromConfigArray[i] >= userRolloutValue && ivtValuesFromConfigArray[i] < closestHigherNum) {
+        closestHigherNum = ivtValuesFromConfigArray[i];
+      }
+    }
+    return closestHigherNum;
+  }
+};
+
+
+//This function constructs the Display IVT Wrapper and appends it as a script tag. It handlesboth Smart and Prebid cases.
+//It must be appended to the document body to avoid being overwritten. When sas.render() is called it overwrites the ad div.
+//The IVT argument is defined by getIVTBucket().
+//If no valid ivtRollout property is in the bucketConfig or if the numbers are incorrect then it returns null.
+//In the many buckets that do not have IVT we expect to get null and execute the default case (no ivt snippet appended.)
+//prebidAd argument is optional. prebidAd is passed only in the Prebid case. The Smart case passes null.
+//This is used in getADPropertyForIVT to return either the Prebid property or a default for Smart.
+var appendDisplayIVTSnippet = function (ivt, prebidAd) {
+  if (ivt === "dv") {
+    let script = document.createElement("script");
+    script.src = 'https://cdn.doubleverify.com/dvtp_src.js?'
+      + 'ctx=3891363&sr=20&cmp=DV201153'
+      + '&plc=DV-BT-Display-JS&advid=3819603'
+      + '&btreg=TronAds'
+      + '&btadsrv=' + getEffectiveTLD()
+      + '&DVP_PP_REP=1&DVP_IQM_ID=32&DVP_DV_TT=1&DVP_DV_CT=1'
+      + '&DVP_BT_1=' + encodeURIComponent(getAdPropertyForIVT(prebidAd, "bidder"))
+      + '&DVP_BT_2=' + encodeURIComponent(getAdPropertyForIVT(prebidAd, "bidder"))
+      + '&DVP_BT_3=' + encodeURIComponent(getAdPropertyForIVT(prebidAd, "adUnitCode"))
+      + '&DVP_BT_4=' + encodeURIComponent(getAdPropertyForIVT(prebidAd, "adUnitCode"))
+      + '&DVP_BT_5=' + encodeURIComponent(getProductName())
+      + '&DVP_BT_6=' + encodeURIComponent(getCurrentBucketName());
+    document.body.appendChild(script);
+    console.debug("dv ivt snippet appended.");
+  } else if (ivt === "ias") {
+    let script = document.createElement("script");
+    script.src = 'https://pixel.adsafeprotected.com/jload?'
+     + 'anId=930924'
+     + '&pubId=' + encodeURIComponent(getAdPropertyForIVT(prebidAd, "bidder"))
+     + '&pubOrder=' + encodeURIComponent(getAdPropertyForIVT(prebidAd, "bidder"))
+     + '&placementId=' + encodeURIComponent(getAdPropertyForIVT(prebidAd, "adUnitCode"))
+     + '&pubCreative=' + encodeURIComponent(getAdPropertyForIVT(prebidAd, "adUnitCode"))
+     + '&chanId=' + encodeURIComponent(getProductName())
+     + '&campId=' + encodeURIComponent(getCurrentBucketName());
+    document.body.appendChild(script);
+    console.debug("ias ivt snippet appended.");
+  } else {
+    console.debug("No IVT snippet appended.");
+  }
+};
+
+//If there's no prebidAd then return the default for Smart. If prebidAd then return the specified property.
+var getAdPropertyForIVT = function (prebidAd, property) {
+  if (prebidAd === undefined) {
+    return "holisticplus";
+  } else if (prebidAd) {
+    return prebidAd[property];
+  }
+};
+
+var getProductName = function () {
+  if (getInUTWeb()) {
+    return "utweb";
+  } else {
+    return "classic";
+  }
+}
+
+// Deprecated (and broken) for ima.js and beyond, do not use
+// Return true if we are in a content page (e.g. the Trending Videos page)
+var inContentDetailPage = function () {
+  var url = window.location.href;
+  // This regex is not sufficient after ima.js because we renamed the files to ranberrytv.html, etc.
+  // We do not use this function or inNormalWePage anymore. Instead methods to define page specific
+  // behaviors e.g. injectVideoDetails() are now defined in the pages themselves so we don't need to test.
+  var regex = /\/content-.*/;
+  if (url.match(regex)) {
+    return true;
+  } else {
+    return false;
+  }
+};
+
+// Deprecated (and broken) for ima.js and beyond, do not use
+// Returns true if we are build a normal web page rather then a minimal placement
+var inNormalWebPage = function  () {
+  if (inClassicClientOrInSimulateClient() === false || inContentDetailPage()) {
+    return true;
+  }
+  return false;
+};
+
+// Return the element into which the video player should be inserted, depending on type of page
+// TODO: all pages/placments should insert into the same element
+var getPlayerElement = function () {
+  if (inNormalWebPage()) {
+    return document.getElementById('tron-player');
+  }
+  return document.body
+}
+
+var applyIVTWrapperToVASTUrl = function (vastAdUrl) {
+  var ivt = getIVTBucket();
+
+  if (ivt === "ias") {
+    console.debug("apply ias");
+    return 'https://vast.adsafeprotected.com/vast?'
+      + 'anId=930924'
+      + '&pubId='  + encodeURIComponent("holisticplus")
+      + '&pubOrder=' + encodeURIComponent("holisticplus")
+      + '&placementId=' + encodeURIComponent("holisticplus")
+      + '&pubCreative=' + encodeURIComponent("holisticplus")
+      + '&chanId=' + encodeURIComponent(getProductName())
+      + '&campId=' + encodeURIComponent(getCurrentBucketName())
+      + '&includeFlash=false'
+      + '&originalVast=' + vastAdUrl;
+  }
+  else if (ivt === "dv") {
+    console.debug("apply doubleverify");
+    return 'https://vast.doubleverify.com/v3/vast?'
+      + 'ctx=3891363&sr=20&cmp=DV201153'
+      + '&plc=DV-BT-Video-Wrapper&advid=3819603'
+      + '&btadsrv=' + getEffectiveTLD()
+      + '&adsrv=166'
+      + '&_api=[APIFRAMEWORKS]'
+      + '&DVP_PP_REP=1'
+      + '&DVP_IQM_ID=32'
+      + '&DVP_DV_TT=3'
+      + '&DVP_DV_CT=2'
+      + '&DVP_BT_1=' + encodeURIComponent("holisticplus")
+      + '&DVP_BT_2=' + encodeURIComponent("holisticplus")
+      + '&DVP_BT_3=' + encodeURIComponent("holisticplus")
+      + '&DVP_BT_4=' + encodeURIComponent("holisticplus")
+      + '&DVP_BT_5=' + encodeURIComponent(getProductName())
+      + '&DVP_BT_6=' + encodeURIComponent(getCurrentBucketName())
+      + '&_vast=' + encodeURIComponent(vastAdUrl)
+  } else {
+    return vastAdUrl;
+  }
+};
+
+var addPolyfillForRandomUUID = function () {
+
+  //ie 11 polyfill for crypto library
+  if (!window.crypto && (window).msCrypto) {
+    (window).crypto = (window).msCrypto;
+  }
+
+  if (!('randomUUID' in crypto))
+  // https://stackoverflow.com/a/2117523/2800218
+  // LICENSE: https://creativecommons.org/licenses/by-sa/4.0/legalcode
+    crypto.randomUUID = function randomUUID() {
+      return (
+        [1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,
+        function (c) {return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)}
+      );
+    };
+};
+
+// Since we're in an iframe we need to be able to access UTWeb's CMP to get consent data.
+// Note: they can not simply pass the function to us via postMessage
+// we need to locate their CMP, use postmessage to make the call, listen for the return value and pass it
+// to a callback. Therefore this function enables us to simply call __tcfapi() like normal.
+// https://github.com/InteractiveAdvertisingBureau/GDPR-Transparency-and-Consent-Framework/blob/master/TCFv2/IAB%20Tech%20Lab%20-%20CMP%20API%20v2.md#how-can-vendors-that-use-iframes-call-the-cmp-api-from-an-iframe
+
+const setTCFApiFunctionForUTWeb = function () {
+  if(getInUTWeb()) {
+    (function () {
+
+      //start here at our window
+      let frame = window;
+
+      // if we locate the CMP iframe we will reference it with this
+      let cmpFrame;
+
+      // map of calls
+      const cmpCallbacks = {};
+
+      while (frame) {
+
+        try {
+
+          /**
+           * throws a reference error if no frames exist
+           */
+
+          if (frame.frames['__tcfapiLocator']) {
+
+            cmpFrame = frame;
+            break;
+
+          }
+
+        } catch (ignore) {
+        }
+
+        if (frame === window.top) {
+
+          break;
+
+        }
+
+        frame = frame.parent;
+
+      }
+
+      /**
+       * Set up a __tcfapi proxy method to do the postMessage and map the callback.
+       * From the caller's perspective, this function behaves identically to the
+       * CMP API's __tcfapi call
+       */
+
+      window.__tcfapi = function (cmd, version, callback, arg) {
+
+        if (!cmpFrame) {
+
+          callback({msg: 'CMP not found'}, false);
+
+        } else {
+
+          const callId = Math.random() + '';
+          const msg = {
+            __tcfapiCall: {
+              command: cmd,
+              parameter: arg,
+              version: version,
+              callId: callId,
+            },
+          };
+
+          /**
+           * map the callback for lookup on response
+           */
+
+          cmpCallbacks[callId] = callback;
+          cmpFrame.postMessage(msg, '*');
+
+        }
+
+      };
+
+      function postMessageHandler(event) {
+
+        /**
+         * when we get the return message, call the mapped callback
+         */
+
+        let json = {};
+
+        try {
+
+          /**
+           * if this isn't valid JSON then this will throw an error
+           */
+
+          json = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+
+        } catch (ignore) {
+        }
+
+        const payload = json.__tcfapiReturn;
+
+        if (payload) {
+
+          /**
+           * messages we care about will have a payload
+           */
+
+          if (typeof cmpCallbacks[payload.callId] === 'function') {
+
+            /**
+             * call the mapped callback and then remove the reference
+             */
+
+            cmpCallbacks[payload.callId](payload.returnValue, payload.success);
+            cmpCallbacks[payload.callId] = null;
+
+          }
+
+        }
+
+      }
+
+      window.addEventListener('message', postMessageHandler, false);
+
+    }());
+  }
+};

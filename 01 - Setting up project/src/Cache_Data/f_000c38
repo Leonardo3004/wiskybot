@@ -1,0 +1,387 @@
+'use strict';
+// Returns true if we are in the client, or if &client=1 is set (for simulation in a browser)
+var inClassicClientOrInSimulateClient = function () {
+    return inClassicClient() || simulateClient();
+};
+var inClassicClient = function () {
+    if (inIEWebView() || inWebView2()) {
+        return true;
+    }
+    return false;
+};
+var inIEWebView = function () {
+    try {
+        if (window.external.getFocus !== undefined) {
+            return true;
+        }
+    }
+    catch (e) {
+        //console.log("Calling window.external.getFocus threw an error. " + e);
+    }
+    return false;
+};
+var inWebView2 = function () {
+    // WebView2 bridges the gap between native code and JS through host objects. We can access this host object
+    // through window.chrome.webview. Currently it's an empty object but could be used as a way of passing us
+    // the focus status. For more info: https://docs.microsoft.com/en-us/microsoft-edge/webview2/how-to/hostobject
+    try {
+        // @ts-ignore (ignore type checking window.chrome.webview for now.)
+        if (window.chrome.webview !== undefined) {
+            return true;
+        }
+    }
+    catch (e) {
+        //console.log("Calling window.chrome.webview threw an error. " + e);
+    }
+    return false;
+};
+var simulateClient = function () {
+    //check if in classic or if this is a regression test
+    // @ts-ignore the urlParam cannot find error until we switch to modules
+    if (urlParam("client")) {
+        return true;
+    }
+    return false;
+};
+var inDashboard = function () {
+    // @ts-ignore TODO: move this function to typedUtils.ts
+    if (urlParam("st") === "dashboard") {
+        return true;
+    }
+    return false;
+};
+var inContentDetailTrendingPage = function () {
+    //we want to detect the video placement in the right pane of the trending tab (adt=6).
+    //to distinguish between the mrec adt=5 that also has "page=trending"
+    // @ts-ignore TODO: move this function to typedUtils.ts
+    if (urlParam("page", false) === "trending" && urlParam("adt", false) === "6") {
+        return true;
+    }
+    return false;
+};
+var inBrowser = function () {
+    if (inClassicClientOrInSimulateClient() === false && getInUTWeb() === false) {
+        return true;
+    }
+    return false;
+};
+var shouldClickToPlay = function () {
+    // @ts-ignore TODO: move urlParam() to typedUtils.ts
+    if (inBrowser() || urlParam("ctp", false)) {
+        return true;
+    }
+    return false;
+};
+var shouldAutoPlayVideo = function () {
+    return !shouldClickToPlay();
+};
+var shouldMuteVideo = function () {
+    return !shouldClickToPlay();
+};
+var initializePage = function () {
+    // @ts-ignore
+    addPolyfillForRandomUUID();
+    //load the HUMAN/WHite Ops script tag if specified in bucket config.
+    appendHumanTag();
+    //load the Spartan script tag if specified in bucket config.
+    appendSpartanTrackingScript();
+    //Suppress the Didomi Popup in classic client
+    suppressDidomiPopup();
+    // Since we're in an iframe we need to be able to access UTWeb's CMP to get consent data.
+    // Note: they can not simply pass the function to us via postMessage
+    // we need to locate their CMP, use postmessage to make the call, listen for the return value and pass it
+    // to a callback. Therefore this function enables us to simply call __tcfapi() like normal.
+    // https://github.com/InteractiveAdvertisingBureau/GDPR-Transparency-and-Consent-Framework/blob/master/TCFv2/IAB%20Tech%20Lab%20-%20CMP%20API%20v2.md#how-can-vendors-that-use-iframes-call-the-cmp-api-from-an-iframe
+    // @ts-ignore
+    setTCFApiFunctionForUTWeb();
+    //if we are not in utweb load the didomi scripts
+    loadDidomiInClassicClient();
+    // uncomment this for debugging--it tests the __tcfapi function call.
+    // If necessary, the 'ping' command will return a PingReturn object that contains the boolean property
+    // cmpLoaded to indicate whether the cmp is loaded.
+    // https://github.com/InteractiveAdvertisingBureau/GDPR-Transparency-and-Consent-Framework/blob/master/TCFv2/IAB%20
+    // Tech%20Lab%20-%20CMP%20API%20v2.md#how-can-scripts-determine-if-the-cmp-script-is-loaded-yet
+    // if (getInUTWeb()) {
+    //     // @ts-ignore
+    //     __tcfapi('ping', 2, (pingReturn, success) => {
+    //
+    //         console.log(success);
+    //
+    //         // should get response from window.top's CMP
+    //
+    //     });
+    // //     __tcfapi('getTCData', 2, function(tcData, success) {
+    // //       if (success) {
+    // //         console.log(tcData.tcString);
+    // //       } else {
+    // //         console.log("tcfv2 failure tcData: " + tcData.tcString);
+    // //       }
+    // //     });
+    // }
+};
+var inUTWebFlag;
+//This flag is set in getDidomiConfigFromUTWeb()
+var getInUTWeb = function () {
+    return inUTWebFlag;
+};
+// Allows for calling a promise with a timeout.
+// It sets a second promise that wraps setTimeout and is rejected when the timeout finishes.
+// It then uses promise.race() to resolve whichever finish first.
+var withTimeout = function (millis, promise) {
+    var timeout = new Promise(function (resolve, reject) {
+        return setTimeout(function () { return reject("Timed out after ".concat(millis, " ms.")); }, millis);
+    });
+    return Promise.race([
+        promise,
+        timeout
+    ]).catch(function (e) {
+        //console.log(e);
+    });
+};
+// This function uses postMessage to communicate with UTWeb
+// We set a listener to get the didomi config and at the same time use this to determine if we are in UTWeb.
+var getDidomiConfigFromUTWeb = function () {
+    return new Promise(function (resolve, reject) {
+        window.parent.postMessage("send_utweb_data", "*");
+        window.addEventListener("message", function (event) {
+            if (event.data.didomiConfig) {
+                inUTWebFlag = true;
+                // set didomiConfig on the window object
+                window.didomiConfig = event.data.didomiConfig;
+                resolve("SUCCESS: Postmessage from UTWeb containing Didomi Config set.");
+            }
+        }, false);
+    });
+};
+var appendHumanTag = function () {
+    // load HUMAN/White Ops tag if specified in the bucket config file.
+    // @ts-ignore TODO: move these functions to typedUtils.ts
+    if (getBucketProperty(getCurrentBucketName(), "addHumanScript")) {
+        var humanTag = document.createElement("script");
+        humanTag.setAttribute('type', 'text/javascript');
+        humanTag.setAttribute('src', 'https://s.imganalytics.com/2/216458/analytics.js?dt=2164581643406193640000&pd=avt' +
+            '&di=' + encodeURIComponent(location.hostname) +
+            '&ap=[APP_ID]' +
+            '&sr=[SUPPLIER_ID]' +
+            '&pp=' + encodeURIComponent("TronTV") +
+            '&ui=[DEVICE_ID]');
+        humanTag.setAttribute('async', 'true');
+        document.head.appendChild(humanTag);
+    }
+};
+var appendSpartanTrackingScript = function () {
+    // load Spartan tracking script if specified in the bucket config file.
+    // @ts-ignore TODO: move these functions to typedUtils.ts
+    if (getBucketProperty(getCurrentBucketName(), "addSpartanScript")) {
+        var spartanScript = document.createElement("script");
+        spartanScript.setAttribute('type', 'text/javascript');
+        spartanScript.setAttribute('src', 'https://d2pozfvrp52dk4.cloudfront.net/spartan.min.js');
+        spartanScript.setAttribute('async', 'true');
+        document.head.appendChild(spartanScript);
+        //after the spartan script is loaded create an additional script that calls their function.
+        spartanScript.onload = function () {
+            var script = document.createElement("script");
+            var textNode = document.createTextNode("spartanTag('config', 'JxDzFUClc','analyze', function(){});");
+            script.appendChild(textNode);
+            document.getElementsByTagName('head')[0].appendChild(script);
+        };
+    }
+};
+// Didomi related methods
+var suppressDidomiPopup = function () {
+    //suppress the didomi consent notice in the ad frame. We only want to do this in the classic client and not on UTWeb.
+    // @ts-ignore TODO: move these functions to typedUtils.ts
+    if (inClassicClient()) {
+        window.didomiConfig = {
+            notice: {
+                enable: false
+            }
+        };
+    }
+};
+var loadDidomiInClassicClient = function () {
+    // if we are in the classic client we need to load the Didomi scripts for the SDK to function
+    // We need to inject the didomi script directly here becuase loading as a script prevents the tcfapi
+    // from being accessible
+    if (inClassicClientOrInSimulateClient()) {
+        var newScript = document.createElement("script");
+        var ccpaScript = document.createTextNode('window.gdprAppliesGlobally=false;' +
+            '(function(){function a(e){if(!window.frames[e])' +
+            '{if(document.body&&document.body.firstChild){var t=document.body;var n=document.createElement("iframe");n.style' +
+            '.display="none";n.name=e;n.title=e;t.insertBefore(n,t.firstChild)}' +
+            'else{setTimeout(function(){a(e)},5)}}}function e(n,r,o,c,s){function e(e,t,n,a){if(typeof n!=="function")' +
+            '{return}if(!window[r]){window[r]=[]}var i=false;if(s){i=s(e,t,n)}if(!i){window[r].push({command:e,parameter:' +
+            't,callback:n,version:a})}}e.stub=true;function t(a){if(!window[n]||window[n].stub!==true){return}if(!a.data)' +
+            '{return}' +
+            'var i=typeof a.data==="string";var e;try{e=i?JSON.parse(a.data):a.data}catch(t){return}if(e[o]){var r=e[o]' +
+            ';window[n](r.command,r.parameter,function(e,t){var n={};n[c]={returnValue:e,success:t,callId:r.callId};' +
+            'a.source.postMessage(i?JSON.stringify(n):n,"*")},r.version)}}' +
+            'if(typeof window[n]!=="function"){window[n]=e;if(window.addEventListener){window.addEventListener("message",' +
+            't,false)}else{window.attachEvent("onmessage",t)}}}e("__tcfapi","__tcfapiBuffer","__tcfapiCall","__tcfapiReturn")' +
+            ';a("__tcfapiLocator");(function(e){' +
+            'var t=document.createElement("script");t.id="spcloader";t.type="text/javascript";t.async=true;t.' +
+            'src="https://sdk.privacy-center.org/"+e+"/loader.js?target="+document.location.hostname;t.charset="utf-' +
+            '8";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(t,n)})("23f4a63d-9222-4f37-b' +
+            '358-33214ecb6672")})();');
+        newScript.appendChild(ccpaScript);
+        document.getElementsByTagName('head')[0].appendChild(newScript);
+        var newScript1 = document.createElement("script");
+        var uspApiScript = document.createTextNode('(function(){function i(e){if(!window.frames[e]){if(document.body' +
+            '&&document.body.firstChild){var t=document.body;var n=document.createElement("iframe");n.style.' +
+            'display="none";n.name=e;n.title=e;t.insertBefore(n,t.firstChild)}else{setTimeout(function(){i(e)},' +
+            '5)}}}function e(n,a,r,e,o){function t(e,t,n){if(typeof n!=="function"){return}if(!window[a]){window' +
+            '[a]=[]}var i=false;if(o){i=o(e,t,n)}if(!i){window[a].push({command:e,parameter:t,callback:n})}}t.' +
+            'stub=true;function i(i){if(!window[n]||window[n].stub!==true){return}if(!i.data){return}var a=typeof ' +
+            'i.data==="string";var e;try{e=a?JSON.parse(i.data):i.data}catch(t){return}if(e[r]){var o=e[r];window' +
+            '[n](o.command,o.parameter,function(e,t){var n={};n.postMessageReturn={returnValue:e,success:t,callId:' +
+            'o.callId};i.source.postMessage(a?JSON.stringify(n):n,"*")})}}if(typeof window[n]!=="function"){window' +
+            '[n]=t;if(window.addEventListener){window.addEventListener("message",i,false)}else{window.attachEvent' +
+            '("onmessage",i)}}}e("__uspapi","__uspapiBuffer","__uspapiCall","__uspapiReturn");i("__uspapiLocator"' +
+            ')})();');
+        newScript1.appendChild(uspApiScript);
+        document.getElementsByTagName('head')[0].appendChild(newScript1);
+    }
+};
+var useCredentials = function (url) {
+    // Test if is a URL that we serve ourselves
+    // This can be true for either content, or house ads served from content.bt.co
+    // If it is served by us, we use allowOrigin="*" ans can't set credentials.
+    // We serve from http://content.bt.co only.
+    // http://s3.amazonaws.com/content.bt.co/ URLs are *not* supported so
+    // adops uses the canonical content.bt.co name only, in case we switch backend.
+    if (url.match('content.bt.co')) {
+        return false;
+    }
+    return true;
+};
+// UUID methods
+var UUID = {
+    retrieveFromLocalStorage: function () {
+        return localStorage.getItem("uuid");
+    },
+    setInLocalStorage: function () {
+        var uuid = URLSafeBase64.encode(self.crypto.randomUUID());
+        localStorage.setItem("uuid", uuid);
+    },
+    get: function () {
+        if (!UUID.retrieveFromLocalStorage()) {
+            UUID.setInLocalStorage();
+        }
+        return UUID.retrieveFromLocalStorage();
+    }
+};
+// URL safe Base64 methods
+var URLSafeBase64 = {
+    // private property
+    // Original:
+    // _keyStr: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",
+    // Url safe:
+    _keyStr: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-",
+    // public method for encoding
+    encode: function (input) {
+        var output = "";
+        var chr1, chr2, chr3, enc1, enc2, enc3, enc4;
+        var i = 0;
+        input = URLSafeBase64._utf8_encode(input);
+        while (i < input.length) {
+            chr1 = input.charCodeAt(i++);
+            chr2 = input.charCodeAt(i++);
+            chr3 = input.charCodeAt(i++);
+            enc1 = chr1 >> 2;
+            enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
+            enc3 = ((chr2 & 15) << 2) | (chr3 >> 6);
+            enc4 = chr3 & 63;
+            if (isNaN(chr2)) {
+                enc3 = enc4 = 64;
+            }
+            else if (isNaN(chr3)) {
+                enc4 = 64;
+            }
+            output = output +
+                this._keyStr.charAt(enc1) + this._keyStr.charAt(enc2) +
+                this._keyStr.charAt(enc3) + this._keyStr.charAt(enc4);
+        }
+        return output;
+    },
+    // public method for decoding
+    decode: function (input) {
+        var output = "";
+        var chr1, chr2, chr3;
+        var enc1, enc2, enc3, enc4;
+        var i = 0;
+        // Original:
+        // input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+        // Url safe:
+        input = input.replace(/[^A-Za-z0-9\.\_\-]/g, "");
+        while (i < input.length) {
+            enc1 = this._keyStr.indexOf(input.charAt(i++));
+            enc2 = this._keyStr.indexOf(input.charAt(i++));
+            enc3 = this._keyStr.indexOf(input.charAt(i++));
+            enc4 = this._keyStr.indexOf(input.charAt(i++));
+            chr1 = (enc1 << 2) | (enc2 >> 4);
+            chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+            chr3 = ((enc3 & 3) << 6) | enc4;
+            output = output + String.fromCharCode(chr1);
+            if (enc3 != 64) {
+                output = output + String.fromCharCode(chr2);
+            }
+            if (enc4 != 64) {
+                output = output + String.fromCharCode(chr3);
+            }
+        }
+        output = URLSafeBase64._utf8_decode(output);
+        return output;
+    },
+    // private method for UTF-8 encoding
+    _utf8_encode: function (string) {
+        string = string.replace(/\r\n/g, "\n");
+        var utftext = "";
+        for (var n = 0; n < string.length; n++) {
+            var c = string.charCodeAt(n);
+            if (c < 128) {
+                utftext += String.fromCharCode(c);
+            }
+            else if ((c > 127) && (c < 2048)) {
+                utftext += String.fromCharCode((c >> 6) | 192);
+                utftext += String.fromCharCode((c & 63) | 128);
+            }
+            else {
+                utftext += String.fromCharCode((c >> 12) | 224);
+                utftext += String.fromCharCode(((c >> 6) & 63) | 128);
+                utftext += String.fromCharCode((c & 63) | 128);
+            }
+        }
+        return utftext;
+    },
+    // private method for UTF-8 decoding
+    _utf8_decode: function (utftext) {
+        var string = "";
+        var i = 0;
+        var c = 0;
+        var c2 = 0;
+        var c3 = 0;
+        while (i < utftext.length) {
+            c = utftext.charCodeAt(i);
+            if (c < 128) {
+                string += String.fromCharCode(c);
+                i++;
+            }
+            else if ((c > 191) && (c < 224)) {
+                c2 = utftext.charCodeAt(i + 1);
+                string += String.fromCharCode(((c & 31) << 6) | (c2 & 63));
+                i += 2;
+            }
+            else {
+                c2 = utftext.charCodeAt(i + 1);
+                c3 = utftext.charCodeAt(i + 2);
+                string += String.fromCharCode(((c & 15) << 12) | ((c2 & 63) << 6) | (c3 & 63));
+                i += 3;
+            }
+        }
+        return string;
+    }
+};
+var getEffectiveTLD = function () {
+    //get the eTLD--"rainberrytv.com" for example, excluding "video".
+    return location.hostname.substring(location.hostname.indexOf('.') + 1);
+};
