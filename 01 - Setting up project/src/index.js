@@ -44,10 +44,13 @@ client.on('ready', async (c) => {
 });
 
 const getScreenhot = async () => {
+  
+
   const browser = await puppeteer.launch({
     headless: false,
-    slowMo:800
+    slowMo:100
   })
+
 
   const page = await browser.newPage()
 
@@ -58,12 +61,26 @@ const getScreenhot = async () => {
   })
   console.log(tomaFoto);
 
-  await page.goto('https://discord.com/channels/800529645241630730/874464936141668395')
 
+
+  await page.goto('https://discord.com/channels/800529645241630730/874464936141668395')
+  await page.click('button[class="marginTop8__83d4b marginCenterHorz__4cf72 linkButton_ba7970 button_afdfd9 lookLink__93965 lowSaturationUnderline__95e71 colorLink_b651e5 sizeMin__94642 grow__4c8a4"]')
+  await page.type('input[name="email"]', 'leonardo.bol.var@gmail.com')
+  await page.type('input[name="password"]', 'pinolillo12345')
+  await page.click('button[type="submit"]')
+
+
+
+  let cont=0;
 
   while (espera) {
-    await page.screenshot({ path: `${imagesPath}/dashboard.png` })
-    console.log("fake photo");
+    cont++;
+
+    if (cont > 40){
+      await page.screenshot({ path: `${imagesPath}/dashboard.png` })
+      console.log("fake photo");
+      cont=0;
+    }
   }
 
   while (tomaFoto) {
@@ -71,7 +88,6 @@ const getScreenhot = async () => {
     console.log("photo");
   }
 
-  
 
   if (fs.existsSync(`${imagesPath}/dashboard.png`)) {
     console.log("Screenshot saved");
@@ -99,7 +115,7 @@ client.on('messageCreate', async (message) => {
 
   }
   if (message.content === 'listo') {
-
+ 
     espera=false;
     
 
