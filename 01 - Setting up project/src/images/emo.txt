@@ -1,0 +1,9 @@
+{'angry': 0.02, 'disgust': 0.0, 'fear': 0.03, 'happy': 0.02, 'sad': 0.14, 'surprise': 0.0, 'neutral': 0.79}
+{'angry': 0.01, 'disgust': 0.0, 'fear': 0.01, 'happy': 0.21, 'sad': 0.24, 'surprise': 0.0, 'neutral': 0.53}
+{'angry': 0.02, 'disgust': 0.0, 'fear': 0.03, 'happy': 0.79, 'sad': 0.01, 'surprise': 0.1, 'neutral': 0.05}
+{'angry': 0.02, 'disgust': 0.0, 'fear': 0.03, 'happy': 0.14, 'sad': 0.04, 'surprise': 0.0, 'neutral': 0.77}
+{'angry': 0.01, 'disgust': 0.0, 'fear': 0.01, 'happy': 0.01, 'sad': 0.07, 'surprise': 0.0, 'neutral': 0.9}
+{'angry': 0.01, 'disgust': 0.0, 'fear': 0.01, 'happy': 0.01, 'sad': 0.06, 'surprise': 0.0, 'neutral': 0.9}
+{'angry': 0.03, 'disgust': 0.0, 'fear': 0.02, 'happy': 0.12, 'sad': 0.04, 'surprise': 0.0, 'neutral': 0.79}
+{'angry': 0.03, 'disgust': 0.0, 'fear': 0.04, 'happy': 0.17, 'sad': 0.38, 'surprise': 0.0, 'neutral': 0.38}
+{'angry': 0.0, 'disgust': 0.0, 'fear': 0.0, 'happy': 0.75, 'sad': 0.01, 'surprise': 0.0, 'neutral': 0.23}

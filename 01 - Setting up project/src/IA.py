@@ -1,5 +1,9 @@
 import json
 
+import firebase_admin
+from firebase_admin import db, credentials
+from datetime import datetime
+
 import cv2
 
 from fer import FER
@@ -7,6 +11,12 @@ from fer import FER
 import matplotlib.pyplot as plt
 
 import matplotlib.image as mpimg
+
+cred = credentials.Certificate("credentials.json")
+firebase_admin.initialize_app(cred, {"databaseURL": "https://students-emotions-default-rtdb.firebaseio.com"})
+
+now = datetime.now()
+timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
 
 def emotionalRecognition():
     # Input Image
@@ -19,12 +29,22 @@ def emotionalRecognition():
     # print(json.dumps(dataList))
 
     # Output image's information
+    '''
     with open('src\images\emo.txt', 'w') as file:
 
         for data in dataList:
             file.write(str(data['emotions'])+'\n')
+    '''
+    lista=[]
+    for emociones in dataList:
+        lista.append(emociones['emotions'])
 
-    
+    data={ 
+        timestamp:lista
+    }
+    ref = db.reference('/')
+    ref.update(data)
+
 
     for i in range(len(dataList)):
         bounding_box = dataList[i]["box"]

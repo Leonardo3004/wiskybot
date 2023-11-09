@@ -11,23 +11,14 @@ const path = require('path')
 const Discord = require("discord.js");
 const fs = require('fs');
 
-const pythonScript = 'src/IA.py';
-
+const pythonIA = 'src/IA.py';
+const pythonAnalisis= 'src/analisis.py';
+const pythonBorrar = 'src/borrar.py';
 
 const imagesPath = path.join(__dirname, 'images')
 
 var tomaFoto = false;
 var espera = false;
-
-
-
-
-
-
-
-
-
-
 
 
 if (!fs.existsSync(imagesPath)) {
@@ -49,15 +40,31 @@ client.on('ready', async (c) => {
 
   /*await getScreenhot();*/
 
-
-
-
-
 });
 
+const analisis = async () => {
+  exec(`python ${pythonAnalisis}`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error: ${error}`);
+      return;
+    }
+  
+    console.log('Python script output:');
+    console.log(stdout);
+  });
+}
 
-
-
+const borrar = async () => {
+  exec(`python ${pythonBorrar}`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error: ${error}`);
+      return;
+    }
+  
+    console.log('Python script output:');
+    console.log(stdout);
+  });
+}
 
 const getScreenhot = async () => {
 
@@ -94,7 +101,7 @@ const getScreenhot = async () => {
     console.log("photo");
 
 
-    exec(`python ${pythonScript}`, (error, stdout, stderr) => {
+    exec(`python ${pythonIA}`, (error, stdout, stderr) => {
       if (error) {
         console.error(`Error: ${error}`);
         return;
@@ -105,7 +112,7 @@ const getScreenhot = async () => {
     });
 
 
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 30000));
   }
 
 
@@ -134,6 +141,18 @@ client.on('messageCreate', async (message) => {
 
 
   }
+
+  if (message.content === 'analisis') {
+    await analisis();
+
+  }
+
+  if (message.content === 'borrar') {
+    await borrar();
+
+  }
+
+
   if (message.content === 'listo') {
 
     espera = false;
