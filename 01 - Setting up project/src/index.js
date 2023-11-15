@@ -1,5 +1,5 @@
 require('dotenv').config();
-
+const fs = require('fs');
 
 
 
@@ -9,7 +9,7 @@ const { Client, IntentsBitField } = require('discord.js');
 const puppeteer = require('puppeteer')
 const path = require('path')
 const Discord = require("discord.js");
-const fs = require('fs');
+let nuevaCadena;
 
 const pythonIA = 'src/IA.py';
 const pythonAnalisis= 'src/analisis.py';
@@ -18,8 +18,7 @@ const pythonBorrar = 'src/borrar.py';
 const imagesPath = path.join(__dirname, 'images')
 
 var tomaFoto = false;
-var espera = false;
-
+var resultadoAnalisis= 'Nada a sido agregado';
 
 if (!fs.existsSync(imagesPath)) {
   fs.mkdirSync(imagesPath);
@@ -65,8 +64,18 @@ const borrar = async () => {
     console.log(stdout);
   });
 }
+function imprimirContenidoArchivo(ruta, m) {
+  fs.readFile(ruta, 'utf8', (error, datos) => {
+    if (error) {
+      console.error('Error al leer el archivo:', error);
+      return;
+    }
 
-const getScreenhot = async () => {
+  
+    m.reply('El resulta del analisis es: \n '+datos) ;
+  });
+}
+const getScreenhot = async (url) => {
 
 
   const browser = await puppeteer.launch({
@@ -86,13 +95,13 @@ const getScreenhot = async () => {
 
 
 
-  await page.goto('https://discord.com/channels/800529645241630730/874464936141668395')
+  await page.goto(nuevaCadena)
   await page.click('button[class="marginTop8__83d4b marginCenterHorz__4cf72 linkButton_ba7970 button_afdfd9 lookLink__93965 lowSaturationUnderline__95e71 colorLink_b651e5 sizeMin__94642 grow__4c8a4"]')
   await page.type('input[name="email"]', 'leonardo.bol.var@gmail.com')
   await page.type('input[name="password"]', 'pinolillo12345')
   await page.click('button[type="submit"]')
 
-
+  
 
 
 
@@ -134,9 +143,16 @@ client.on('messageCreate', async (message) => {
     message.reply('hello');
   }
 
-  if (message.content === 'wisky') {
+  
+
+  if (message.content === '!ayuda') {
+    message.reply('A continuacion una brebe descripcion de los comandos disponibles \n -> wisky <URL del canal a analizar>: Abre el web scrapin y comienza la recoleccion de datos. (requiere que el usuario se una a la llama manualmente) \n -> borrar: Elimina los datos para crear un nuevo analisis. \n -> stop: Detiene la Recoleccion de informacion. \n -> analisis: Muestra el analisis de la informacion recolectada.');
+  }
+
+  if (message.content.startsWith('wisky')) {
     tomaFoto = true;
-    espera = true
+    nuevaCadena = message.content.slice(6);
+
     await getScreenhot();
 
 
@@ -144,24 +160,19 @@ client.on('messageCreate', async (message) => {
 
   if (message.content === 'analisis') {
     await analisis();
+    imprimirContenidoArchivo('example.txt', message);
 
   }
 
   if (message.content === 'borrar') {
     await borrar();
-
+    message.reply('Los datos han sido eliminados con exito');
   }
 
-
-  if (message.content === 'listo') {
-
-    espera = false;
-
-
-  }
   if (message.content === 'stop') {
 
     tomaFoto = false;
+    message.reply('se ha dejado de grabar');
 
   }
 
