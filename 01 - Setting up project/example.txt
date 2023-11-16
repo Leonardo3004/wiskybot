@@ -1,5 +1,6 @@
-El promedio de estudiantes 'enojados' es de': 0.044%.
-El promedio de estudiantes 'contentos' es de: 0.359%.
-El promedio de estudiantes 'neutrales' es de: 0.262%.
-El promedio de estudiantes 'disconformes' es de: 0.0%.
-El promedio de estudiantes 'con miedo' es de: 0.074%.
+El promedio de estudiantes 'enojados' es de': 0.075%.
+El promedio de estudiantes 'contentos' es de: 0.206%.
+El promedio de estudiantes 'neutrales' es de: 0.41%.
+El promedio de estudiantes 'disconformes' es de: 0.001%.
+El promedio de estudiantes 'con miedo' es de: 0.073%.
+La emocion mas predominante es 'Neutral': 0.41%.
