@@ -97,8 +97,11 @@ const getScreenhot = async (url) => {
 
   await page.goto(nuevaCadena)
   await page.click('button[class="marginTop8__83d4b marginCenterHorz__4cf72 linkButton_ba7970 button_afdfd9 lookLink__93965 lowSaturationUnderline__95e71 colorLink_b651e5 sizeMin__94642 grow__4c8a4"]')
+  //se ingresa la cuenta de discord
   await page.type('input[name="email"]', 'leonardo.bol.var@gmail.com')
+  //se ingresa la contraseña de discord
   await page.type('input[name="password"]', 'pinolillo12345')
+  
   await page.click('button[type="submit"]')
 
   
